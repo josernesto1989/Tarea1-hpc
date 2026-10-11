@@ -31,6 +31,15 @@ clock_t start, end1, start2, end2;
 
 //const double CLK_TCK = 1000.0;
 using namespace std;
+
+#if defined(__aarch64__)
+inline uint64_t get_cycles() {
+    uint64_t val;
+    asm volatile("mrs %0, cntvct_el0" : "=r" (val));
+    return val;
+}
+#endif
+
 void* multi(void *arg) 
 { 	
 	int *core = (int *) arg;
@@ -55,7 +64,7 @@ int main(int argc, char *argv[]){
 		MAX_THREAD=atoi(argv[1]);
 	
 	int id[MAX_THREAD];
-
+	srand(100);// Para que los valores aleatorios sean los mismos en cada ejecución
 	// Generating random values in matA and matB
 	for (int i = 0; i < MAX; i++) { 
 			for (int j = 0; j < MAX; j++) { 
@@ -86,7 +95,12 @@ int main(int argc, char *argv[]){
 	int r;
 
 	start = clock();   
-	start2 = time(NULL); 
+	start2 = time(NULL);
+	auto start_chronos = std::chrono::high_resolution_clock::now();
+	#if defined(__aarch64__)
+    	uint64_t start_cycles1 = get_cycles();
+    	uint64_t start_cycles2 = get_cycles();
+	#endif 
 	pthread_attr_init(&atr);
 	pthread_attr_setdetachstate(&atr, PTHREAD_CREATE_JOINABLE);
 	// Creating four threads, each evaluating its own part 
@@ -110,6 +124,11 @@ int main(int argc, char *argv[]){
 			exit(-1);
 		}
 	}
+	#if defined(__aarch64__)
+		uint64_t end_cycles = get_cycles();
+		// std::cout << "Ciclos (ARM): " << (end_cycles - start_cycles1) << std::endl;
+	#endif
+	auto end_chronos = std::chrono::high_resolution_clock::now();
 	end2 = time(NULL);
         end1= clock();
 
@@ -123,14 +142,19 @@ int main(int argc, char *argv[]){
 
         total_time = ((double) (end1 - start))/CLOCKS_PER_SEC;
 	total_time2 = (int) (end2-start2);
-	
+	auto duration_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(end_chronos - start_chronos).count();
 	//Comentar para utilizar ini.sh
 	/*cout <<"No. de hilos: "<<MAX_THREAD<<", "<< "Total time clock(): "<< total_time <<"segundos"<< endl;
 	cout <<"Total time time(): " << total_time2 << "segundos" << endl;*/
 
 	//Descomentar para utilizar ini.sh
-	printf("%.2lf %d\n",total_time,total_time2);
-
+	// printf("\n");
+	#if defined(__aarch64__)
+		// printf("Hilos: %d, Tiempo clock(): %.2llu,  Duración (ns): %llu\n", MAX_THREAD, end_cycles-start_cycles1, duration_ns);
+		printf("%d %.2llu %llu\n", MAX_THREAD, end_cycles-start_cycles1, duration_ns);
+	#else
+	printf("Hilos: %d, Tiempo clock(): %.2lf, Tiempo time(): %d\n", MAX_THREAD, total_time, total_time2);
+	#endif
 	pthread_exit(NULL);
 
 	//return 0;
